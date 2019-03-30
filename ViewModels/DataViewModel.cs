@@ -26,14 +26,13 @@ namespace LAB05.ViewModels
             StartWorkingThread();
             StationManager.StopThreads += StopWorkingThread;
 
-            IEnumerator<ProcessItem> a = ProcessList.GetEnumerator();
+            //IEnumerator<ProcessItem> a = ProcessList.GetEnumerator();
            
-            MessageBox.Show(a.MoveNext()+"");
-            _curProcess = a.Current;
-            MessageBox.Show(_curProcess+"");
-            _curProcess.IsSelected = true;
-            SelectedProcess = _curProcess;
-            OnPropertyChanged("ProcessList");
+            //_curProcess = a.Current;
+ 
+            //_curProcess.IsSelected = true;
+            //SelectedProcess = _curProcess;
+            //OnPropertyChanged("ProcessList");
 
         }
 
