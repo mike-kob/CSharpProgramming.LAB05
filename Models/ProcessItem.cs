@@ -1,119 +1,80 @@
 ﻿using System;
-using System.Management;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Security.Permissions;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
 using Microsoft.VisualBasic.Devices;
 
 namespace LAB05.Models
 {
     class ProcessItem : INotifyPropertyChanged
     {
+        public ProcessItem(Process pr)
+        {
+            _process = pr;
+            Name = pr.ProcessName;
+            Title = pr.MainWindowTitle;
+            Id = pr.Id;
+            _cpuUsage = new PerformanceCounter("Process", "% Processor Time", pr.ProcessName, pr.MachineName);
+            _proceesFraction = 100.0 / (new ComputerInfo()).TotalPhysicalMemory;
+            try
+            {
+                FileLocation = _process.MainModule.FileName;
+            }
+            catch (Exception)
+            {
+            }
+
+        }
+
+        #region Fields
+
         private double _proceesFraction = -1;
         private Process _process;
-        private bool _isSelected;
+        private PerformanceCounter _cpuUsage;
+        private long _lastTime = -1;
+        private long _workingSet = 0;
+        private float _cpuUsageFloat;
 
-        private DateTime _lastTime = new DateTime();
-        private TimeSpan _lastTotalProcessorTime;
-        private DateTime _curTime = new DateTime();
-        private TimeSpan _curTotalProcessorTime;
+        #endregion
+
 
         #region Properties
 
-        public bool IsSelected
-        {
-            get { return _isSelected;}
-            set
-            {
-                _isSelected = value;
-                OnPropertyChanged();
-            } }
-
-        private double ProcessFraction
-        {
-            get
-            {
-                return (_proceesFraction < 0)
-                    ? (_proceesFraction = 100.0 / (new ComputerInfo()).TotalPhysicalMemory)
-                    : _proceesFraction;
-            }
-        }
-
         public string Name { get; set; }
         public string Title { get; set; }
-        public long Id { get; set; }
+        public int Id { get; set; }
+        public string FileLocation { get; set; }
 
-        public string FileLocation
+        public float CPUUsageFloat
         {
-            get
-            {
-                try
-                {
-                    return _process.MainModule.FileName;
-                }
-                catch (Exception e)
-                {
-                    return "";
-                }
-            }
+            get { return _cpuUsageFloat; }
         }
 
-
-        public long MemoryWorkingSet { get; set; }
-
-        public Process MyProcess
+        public long MemoryWorkingSet
         {
-            set { _process = value; }
+            get { return _workingSet; }
         }
 
         public string MemoryUsagePercent
         {
-            get { return (MemoryWorkingSet * ProcessFraction).ToString("0.00"); }
+            get { return (_workingSet * _proceesFraction).ToString("0.00"); }
         }
 
         public string MemoryUsageMB
         {
-            get { return (MemoryWorkingSet / (1024.0 * 1024.0)).ToString("0.00"); }
+            get { return (_workingSet / (1024.0 * 1024.0)).ToString("0.00"); }
+        }
+
+        public bool IsActive
+        {
+            get { return _process.Responding; }
         }
 
         public string CPU
         {
             get
             {
-                return "0";
-                /*try
-                {
-                    if (_lastTime == new DateTime())
-                    {
-                        _lastTime = DateTime.Now;
-                        _lastTotalProcessorTime = _process.TotalProcessorTime;
-                        return "0";
-                    }
-                    else
-                    {
-                        _curTime = DateTime.Now;
-                        _curTotalProcessorTime = _process.TotalProcessorTime;
-
-                        double CPUUsage =
-                            (_curTotalProcessorTime.TotalMilliseconds - _lastTotalProcessorTime.TotalMilliseconds) /
-                            _curTime.Subtract(_lastTime).TotalMilliseconds / Convert.ToDouble(Environment.ProcessorCount);
-
-                        _lastTime = _curTime;
-                        _lastTotalProcessorTime = _curTotalProcessorTime;
-                        return (CPUUsage * 100).ToString("0.00");
-
-                    }
-                }
-                catch (Exception e)
-                {
-                    return "No access";
-                }*/
+                return _cpuUsageFloat.ToString("0.00");
                 
             }
         }
@@ -122,33 +83,33 @@ namespace LAB05.Models
         {
             get
             {
-           
                 try
                 {
                     ProcessModuleCollection a = _process.Modules;
                     return _process.Modules;
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     return null;
                 }
             }
         }
+
         public ProcessThreadCollection Threads
         {
             get
             {
-
                 try
                 {
                     return _process.Threads;
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     return null;
                 }
             }
         }
+
         #endregion
 
         public void TerminateProcess()
@@ -156,12 +117,40 @@ namespace LAB05.Models
             _process.Kill();
         }
 
-
         public event PropertyChangedEventHandler PropertyChanged;
 
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        public void Update()
+        {
+            _workingSet = _process.WorkingSet64;
+            try
+            {
+                if (_lastTime == -1)
+                {
+                    _lastTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    _cpuUsageFloat = 0;
+                    _cpuUsage.NextValue();
+                }
+                else if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastTime > 1000)
+                {
+                    _lastTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    _cpuUsageFloat = _cpuUsage.NextValue() / Environment.ProcessorCount;
+                }
+
+            }
+            catch (Exception)
+            {
+            }
+
+            OnPropertyChanged("MemoryWorkingSet");
+            OnPropertyChanged("MemoryUsageMB");
+            OnPropertyChanged("MemoryUsagePercent");
+            OnPropertyChanged("CPU");
+
         }
     }
 }

@@ -1,51 +1,46 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Dynamic;
-using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Forms;
 using LAB05.Models;
 using LAB05.Tools;
 using LAB05.Tools.Managers;
-using LAB05.Tools.Navigation;
-using Microsoft.VisualBasic.Devices;
 
 namespace LAB05.ViewModels
 {
     internal class DataViewModel : BaseViewModel
     {
+        #region Constructors
+
         public DataViewModel()
         {
             _tokenSource = new CancellationTokenSource();
             _token = _tokenSource.Token;
+            Load();
             StartWorkingThread();
             StationManager.StopThreads += StopWorkingThread;
-
-            //IEnumerator<ProcessItem> a = ProcessList.GetEnumerator();
-           
-            //_curProcess = a.Current;
- 
-            //_curProcess.IsSelected = true;
-            //SelectedProcess = _curProcess;
-            //OnPropertyChanged("ProcessList");
-
+            ViewSource.Source = _processMap;
+            ViewSource.View.Filter = ShowOnlyBargainsFilter;
+        
         }
+
+        #endregion
+
 
         #region Fields
 
-        private List<Process> _processList = StationManager.PrList;
-        private ProcessItem _selectedProcess;
+        private static ConcurrentDictionary<int, ProcessItem>
+            _processMap = new ConcurrentDictionary<int, ProcessItem>();
+
+        private KeyValuePair<int, ProcessItem> _selectedProcess;
+        private CollectionViewSource _viewSource = new CollectionViewSource();
+
         private string[] _filterBy = {"Id", "Name", "Window Title"};
         private string[] _sortBy = {"Id", "Name", "Window Title", "Memory Usage"};
-        private int _sortByIndex = 1;
-        private int _filterByIndex = 1;
-        private bool _isAsc = true;
-        private int _selectedIndex = -1;
 
         private RelayCommand<object> _openCommand;
         private RelayCommand<object> _filterCommand;
@@ -53,37 +48,24 @@ namespace LAB05.ViewModels
 
 
         private Thread _workingThread;
+        private Thread _workingThread2;
+
         private CancellationToken _token;
         private CancellationTokenSource _tokenSource;
-        private BackgroundWorker _backgroundWorker;
-        private Task _backgroundTask;
-
-
-        private ProcessItem _curProcess;
 
         #endregion
 
         #region Properties
 
-        public int SelectedIndex
+        public CollectionViewSource ViewSource
         {
-            get { return _selectedIndex; }
-            set
+            get
             {
-                if (value != -1)
-                {
-                    _selectedIndex = value;
-                }
-            }
-        }
+                KeyValuePair<int, ProcessItem> t = _selectedProcess;
+                _viewSource?.View?.Refresh();
+                SelectedProcess = t;
 
-        public bool IsAscending
-        {
-            get { return _isAsc; }
-            set
-            {
-                _isAsc = value;
-                OnPropertyChanged("ProcessList");
+                return _viewSource;
             }
         }
 
@@ -99,86 +81,30 @@ namespace LAB05.ViewModels
             get { return _sortBy; }
         }
 
-        public int SortByIndex
-        {
-            get { return _sortByIndex; }
-            set
-            {
-                _sortByIndex = value;
-                OnPropertyChanged("ProcessList");
-            }
-        }
 
-        public int FilterByIndex
-        {
-            get { return _filterByIndex; }
-            set { _filterByIndex = value; }
-        }
+        public int FilterByIndex { get; set; } = 1;
 
-        public ProcessItem SelectedProcess
+        public KeyValuePair<int, ProcessItem> SelectedProcess
         {
             get { return _selectedProcess; }
             set
             {
-              
-                    _selectedProcess = value;
+                _selectedProcess = value;
 
-                    OnPropertyChanged();
-                    OnPropertyChanged("ProcessModules");
-                    OnPropertyChanged("ProcessThreads");
-                
+                OnPropertyChanged();
+                OnPropertyChanged("ProcessModules");
+                OnPropertyChanged("ProcessThreads");
+                OnPropertyChanged("ThreadsNumber");
             }
         }
 
-        public int SelectedSortDescriptionByIndex { get; set; }
-
-        public IEnumerable<ProcessItem> ProcessList
-        {
-            get
-            {
-           
-                _processList = new List<Process>(Process.GetProcesses());
-
-                IEnumerable<ProcessItem> l = (from row in _processList
-                    where (String.IsNullOrWhiteSpace(FilterText)
-                           || (FilterByIndex == 0 && row.Id.ToString().Contains(FilterText))
-                           || (FilterByIndex == 1 && row.ProcessName.Contains(FilterText))
-                           || (FilterByIndex == 2 && row.MainWindowTitle.Contains(FilterText))
-                        )
-                    select new ProcessItem
-                    {
-                        MemoryWorkingSet = row.WorkingSet64,
-                        Id = row.Id,
-                        Name = row.ProcessName,
-                        Title = row.MainWindowTitle,
-                        MyProcess = row
-                    });
-
-                switch (SortByIndex)
-                {
-                    case 0:
-                        l = IsAscending ? l.OrderBy(o => o.Id) : l.OrderByDescending(o => o.Id);
-                        break;
-                    case 1:
-                        l = IsAscending ? l.OrderBy(o => o.Name) : l.OrderByDescending(o => o.Name);
-                        break;
-                    case 2:
-                        l = IsAscending ? l.OrderBy(o => o.Title) : l.OrderByDescending(o => o.Title);
-                        break;
-                    case 3:
-                        l = IsAscending
-                            ? l.OrderBy(o => o.MemoryWorkingSet)
-                            : l.OrderByDescending(o => o.MemoryWorkingSet);
-                        break;
-                }
-  
-                return l;
-            }
-        }
 
         public RelayCommand<object> OpenCommand
         {
-            get { return _openCommand ?? (_openCommand = new RelayCommand<object>(OpenImplementation, CanDoWithProcess)); }
+            get
+            {
+                return _openCommand ?? (_openCommand = new RelayCommand<object>(OpenImplementation, CanDoWithProcess));
+            }
         }
 
         public RelayCommand<object> TerminateCommand
@@ -195,41 +121,56 @@ namespace LAB05.ViewModels
             get
             {
                 return _filterCommand ?? (_filterCommand = new RelayCommand<object>(
-                           (o => { OnPropertyChanged("ProcessList"); })));
+                           (o =>
+                           {
+                               _viewSource.View.Refresh();
+                               OnPropertyChanged("ViewSource");
+                           })));
             }
         }
 
         #endregion
 
-        #region Process Props
+        #region ProcessProps
 
         public ProcessModuleCollection ProcessModules
         {
-            get { return SelectedProcess?.Modules; }
+            get { return SelectedProcess.Value?.Modules; }
         }
 
         public ProcessThreadCollection ProcessThreads
         {
-            get { return SelectedProcess?.Threads; }
+            get { return SelectedProcess.Value?.Threads; }
+        }
+
+        public int ThreadsNumber
+        {
+            get
+            {
+                if (SelectedProcess.Value != null)
+                    return SelectedProcess.Value.Threads.Count;
+                else
+
+                    return 0;
+            }
         }
 
         #endregion
+
 
         private async void OpenImplementation(object obj)
         {
             LoaderManeger.Instance.ShowLoader();
             await Task.Run((() =>
             {
-                if (String.IsNullOrWhiteSpace(SelectedProcess.FileLocation))
+                if (String.IsNullOrWhiteSpace(SelectedProcess.Value.FileLocation))
                 {
                     MessageBox.Show("Access denied", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-
-                OnPropertyChanged("ProcessList");
-                string argument = "/select, \"" + SelectedProcess.FileLocation + "\"";
+                string argument = "/select, \"" + SelectedProcess.Value.FileLocation + "\"";
                 Process.Start("explorer.exe", argument);
             }));
             LoaderManeger.Instance.HideLoader();
@@ -238,11 +179,12 @@ namespace LAB05.ViewModels
         private async void TerminateImplementation(object obj)
         {
             LoaderManeger.Instance.ShowLoader();
-            await Task.Run(() => {
+            await Task.Run(() =>
+            {
                 try
                 {
-                    SelectedProcess?.TerminateProcess();
-                    OnPropertyChanged("ProcessList");
+                    SelectedProcess.Value.TerminateProcess();
+                    OnPropertyChanged("ViewSource");
                 }
                 catch (Exception e)
                 {
@@ -251,18 +193,19 @@ namespace LAB05.ViewModels
                 }
             });
             LoaderManeger.Instance.HideLoader();
-           
         }
 
         private bool CanDoWithProcess(object obj)
         {
-            return SelectedProcess != null;
+            return SelectedProcess.Value != null;
         }
 
         private void StartWorkingThread()
         {
             _workingThread = new Thread(WorkingThreadProcess);
+            _workingThread2 = new Thread(WorkingThreadProcess2);
             _workingThread.Start();
+            _workingThread2.Start();
         }
 
 
@@ -271,10 +214,30 @@ namespace LAB05.ViewModels
             int i = 0;
             while (!_token.IsCancellationRequested)
             {
-                ProcessItem tmp = SelectedProcess;
+         
+                Process[] processes = Process.GetProcesses();
 
-                OnPropertyChanged("ProcessList");
-                SelectedProcess = tmp;
+                var old = new HashSet<int>(_processMap.Keys);
+
+                foreach (var process in processes)
+                {
+                    _processMap.GetOrAdd(process.Id, new ProcessItem(process));
+                    old.Remove(process.Id);
+                    if (_token.IsCancellationRequested)
+                        return;
+                }
+
+                foreach (var o in old)
+                {
+                    ProcessItem s;
+                    _processMap.TryRemove(o, out s);
+                    if (_token.IsCancellationRequested)
+                        return;
+                }
+
+                OnPropertyChanged("ViewSource");
+
+      
                 for (int j = 0; j < 10; j++)
                 {
                     Thread.Sleep(500);
@@ -282,8 +245,91 @@ namespace LAB05.ViewModels
                     if (_token.IsCancellationRequested)
                         break;
                 }
+
                 i++;
             }
+        }
+
+        private void WorkingThreadProcess2()
+        {
+            int i = 0;
+            while (!_token.IsCancellationRequested)
+            {
+                foreach (var process in _processMap.Values)
+                {
+                    process.Update();
+                    if (_token.IsCancellationRequested)
+                        return;
+                }
+
+                OnPropertyChanged("ViewSource");
+
+                for (int j = 0; j < 4; j++)
+                {
+                    Thread.Sleep(500);
+
+                    if (_token.IsCancellationRequested)
+                        break;
+                }
+
+                i++;
+            }
+        }
+
+
+        private bool ShowOnlyBargainsFilter(object item)
+        {
+            KeyValuePair<int, ProcessItem> process = (KeyValuePair<int, ProcessItem>) item;
+            if (process.Value != null && !String.IsNullOrWhiteSpace(FilterText))
+            {
+                ProcessItem l = process.Value;
+
+                switch (FilterByIndex)
+                {
+                    case 0:
+                        return l.Id.ToString().Contains(FilterText);
+                    case 1:
+                        return l.Name.Contains(FilterText);
+                    case 2:
+                        return l.Title.Contains(FilterText);
+                    default:
+                        return true;
+                }
+            }
+
+            return true;
+        }
+
+        private async void Load()
+        {
+            LoaderManeger.Instance.ShowLoader();
+            await Task.Run(() =>
+            {
+                Process[] processes = Process.GetProcesses();
+
+                var old = new HashSet<int>(_processMap.Keys);
+
+                foreach (var process in processes)
+                {
+                    _processMap.GetOrAdd(process.Id, new ProcessItem(process));
+                    old.Remove(process.Id);
+                    if (_token.IsCancellationRequested)
+                        return;
+                }
+
+                foreach (var o in old)
+                {
+                    ProcessItem s;
+                    _processMap.TryRemove(o, out s);
+                    if (_token.IsCancellationRequested)
+                        return;
+                }
+
+                OnPropertyChanged("ViewSource");
+            });
+            
+
+            LoaderManeger.Instance.HideLoader();
         }
 
         internal void StopWorkingThread()
@@ -292,6 +338,10 @@ namespace LAB05.ViewModels
             _workingThread.Join(2000);
             _workingThread.Abort();
             _workingThread = null;
+
+            _workingThread2.Join(2000);
+            _workingThread2.Abort();
+            _workingThread2 = null;
         }
     }
 }

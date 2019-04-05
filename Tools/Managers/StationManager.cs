@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
 
 namespace LAB05.Tools.Managers
 {
@@ -12,6 +11,10 @@ namespace LAB05.Tools.Managers
         public static event Action StopThreads;
 
         internal static DataGrid PersonTable { get; set; }
+
+        
+
+        public static Random r = new Random();
 
         internal static List<Process> PrList
         {
@@ -31,7 +34,7 @@ namespace LAB05.Tools.Managers
 
         internal static void CloseApp()
         {
-            MessageBox.Show("ShutDown or not");
+            MessageBox.Show("ShutDown");
             StopThreads?.Invoke();
             Environment.Exit(1);
         }
