@@ -55,6 +55,7 @@
                                     SortMemberPath="Value.CPUUsageFloat"/>
                 <DataGridTextColumn Header="FilePath, Mb" Binding="{Binding Value.FileLocation}" Width="100" />
                 <DataGridCheckBoxColumn Header="Is responding" Binding="{Binding Value.IsActive, Mode=OneWay}" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Start Time" Binding="{Binding Value.StartTime, Mode=OneWay}"/>
             </DataGrid.Columns>
         </DataGrid>
         <Grid Column="3" Row="1">

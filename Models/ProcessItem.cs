@@ -16,6 +16,15 @@ namespace LAB05.Models
             Id = pr.Id;
             _cpuUsage = new PerformanceCounter("Process", "% Processor Time", pr.ProcessName, pr.MachineName);
             _proceesFraction = 100.0 / (new ComputerInfo()).TotalPhysicalMemory;
+
+            try
+            {
+                _startTime = _process.StartTime;
+            }
+            catch (Exception)
+            {
+            }
+            
             try
             {
                 FileLocation = _process.MainModule.FileName;
@@ -34,6 +43,7 @@ namespace LAB05.Models
         private long _lastTime = -1;
         private long _workingSet = 0;
         private float _cpuUsageFloat;
+        private DateTime _startTime = new DateTime();
 
         #endregion
 
@@ -77,6 +87,11 @@ namespace LAB05.Models
                 return _cpuUsageFloat.ToString("0.00");
                 
             }
+        }
+
+        public DateTime StartTime
+        {
+            get { return _startTime; }
         }
 
         public ProcessModuleCollection Modules
